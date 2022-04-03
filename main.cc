@@ -233,97 +233,97 @@ int main() {
 
     // next:
 
-        std::function<double(double, double)> path_payoff{
-            [](double path_avg, double) { return path_avg; }
-        };
+    std::function<double(double, double)> path_payoff{
+        [](double path_avg, double) { return path_avg; }
+    };
 
-        S_o = 49.0;
-        std::function<void(int, double, double&)> path_accum_tanh{
-            [S_o](int idx, double S, double& accum) { accum += (std::tanh(S / S_o) - accum) / idx; }
-        };
+    S_o = 49.0;
+    std::function<void(int, double, double&)> path_accum_tanh{
+        [S_o](int idx, double S, double& accum) { accum += (std::tanh(S / S_o) - accum) / idx; }
+    };
 
-        T = 6 / 12.0;
-        Terms terms_asian_tanh_call{ Terms::Style::AsianExotic, Terms::Type::Other, T, path_payoff,
-                                     path_accum_tanh, 0.0 };
-        q = 0.0;
-        sigma = 0.3;
-        Asset underlying_asian2{ S_o, q, sigma };
-        Option asian_tanh_call(terms_asian_tanh_call, underlying_asian2);
-        r = 0.07;
-        N_steps = 1000;
-        N_sims = 10000;
-        antithetic = true;
-        get_greeks = true;
+    T = 6 / 12.0;
+    Terms terms_asian_tanh_call{ Terms::Style::AsianExotic, Terms::Type::Other, T, path_payoff,
+                                 path_accum_tanh, 0.0 };
+    q = 0.0;
+    sigma = 0.3;
+    Asset underlying_asian2{ S_o, q, sigma };
+    Option asian_tanh_call(terms_asian_tanh_call, underlying_asian2);
+    r = 0.07;
+    N_steps = 1000;
+    N_sims = 10000;
+    antithetic = true;
+    get_greeks = true;
+    sd_prc = 0.0;
+    asian_tanh_call.MC_prc(N_sims, N_steps, r, get_greeks, antithetic, sd_prc);
+    cout << "\nAsianExotic tanh_path_avg 0_call MC pricer with N_sims: " << N_sims << ", N_steps: " << N_steps << '\n'
+        << "r    Style     AvgType Class  K  T  S_o  q  sigma\n"
+        << r << ' ' << asian_tanh_call << ":\n"
+        << "price: " << asian_tanh_call.price() << ", std_dev: " << sd_prc << '\n'
+        << "delta: " << asian_tanh_call.delta() << '\n' << "gamma: " << asian_tanh_call.gamma() << '\n'
+        << "theta: " << asian_tanh_call.theta() << '\n' << "rho: " << asian_tanh_call.rho() << '\n'
+        << "vega: " << asian_tanh_call.vega() << endl;
+
+
+    std::function<double(double, double)> path_payoff_sin_tanh_abs{
+        [](double path_avg, double S) { return std::abs(std::sin((path_avg - std::tanh(S)) / (std::tanh(S) / 10.0))); }
+    };
+
+    Terms terms_asian_tanh_sin_abs{ Terms::Style::AsianExotic, Terms::Type::Other, T, path_payoff_sin_tanh_abs,
+                                 path_accum_tanh, 0.0 };
+    Option asian_tanh_sin_abs{ terms_asian_tanh_sin_abs, underlying_asian2 };
+    antithetic = true;
+    get_greeks = true;
+    sd_prc = 0.0;
+    asian_tanh_sin_abs.MC_prc(N_sims, N_steps, r, get_greeks, antithetic, sd_prc);
+    cout << "\nAsianExotic abs(sin(tanh_path_avg)) MC pricer with N_sims: " << N_sims << ", N_steps: " << N_steps << '\n'
+        << "r    Style     AvgType Class  K  T  S_o  q  sigma\n"
+        << r << ' ' << asian_tanh_sin_abs << ":\n"
+        << "price: " << asian_tanh_sin_abs.price() << ", std_dev: " << sd_prc << '\n'
+        << "delta: " << asian_tanh_sin_abs.delta() << '\n' << "gamma: " << asian_tanh_sin_abs.gamma() << '\n'
+        << "theta: " << asian_tanh_sin_abs.theta() << '\n' << "rho: " << asian_tanh_sin_abs.rho() << '\n'
+        << "vega: " << asian_tanh_sin_abs.vega() << endl;
+
+
+    std::function<double(double, double)> path_payoff_sin_tanh{
+        [](double path_avg, double S) { return std::sin((path_avg - std::tanh(S)) / (std::tanh(S) / 10.0)); }
+    };
+
+    Terms terms_asian_tanh_sin{ Terms::Style::AsianExotic, Terms::Type::Other, T, path_payoff_sin_tanh,
+                                 path_accum_tanh, 0.0 };
+    Option asian_tanh_sin{ terms_asian_tanh_sin, underlying_asian2 };
+    antithetic = true;
+    get_greeks = true;
+    sd_prc = 0.0;
+    asian_tanh_sin.MC_prc(N_sims, N_steps, r, get_greeks, antithetic, sd_prc);
+    cout << "\nAsianExotic sin(tanh_path_avg) MC pricer with N_sims: " << N_sims << ", N_steps: " << N_steps << '\n'
+        << "r    Style     AvgType Class  K  T  S_o  q  sigma\n"
+        << r << ' ' << asian_tanh_sin << ":\n"
+        << "price: " << asian_tanh_sin.price() << ", std_dev: " << sd_prc << '\n'
+        << "delta: " << asian_tanh_sin.delta() << '\n' << "gamma: " << asian_tanh_sin.gamma() << '\n'
+        << "theta: " << asian_tanh_sin.theta() << '\n' << "rho: " << asian_tanh_sin.rho() << '\n'
+        << "vega: " << asian_tanh_sin.vega() << endl;
+
+    /* need euro_put -> euro_straddle:
+        euro_put.btree_prc(N_steps, r, get_greeks);
+        cout << "\nOn Binary pricing tree with N_steps: " << N_steps << '\n'
+            << "Style    Class  K   T     S_o q sigma\n"
+            << euro_put << ":\n"
+            << "price: " << euro_put.price() << '\n'
+            << "delta: " << euro_put.delta() << '\n' << "gamma: " << euro_put.gamma() << '\n'
+            << "theta: " << euro_put.theta() << '\n' << "rho: " << euro_put.rho() << '\n'
+            << "vega: " << euro_put.vega() << endl;
+
         sd_prc = 0.0;
-        asian_tanh_call.MC_prc(N_sims, N_steps, r, get_greeks, antithetic, sd_prc);
-        cout << "\nAsianExotic tanh_path_avg 0_call MC pricer with N_sims: " << N_sims << ", N_steps: " << N_steps << '\n'
-            << "r    Style     AvgType Class  K  T  S_o  q  sigma\n"
-            << r << ' ' << asian_tanh_call << ":\n"
-            << "price: " << asian_tanh_call.price() << ", std_dev: " << sd_prc << '\n'
-            << "delta: " << asian_tanh_call.delta() << '\n' << "gamma: " << asian_tanh_call.gamma() << '\n'
-            << "theta: " << asian_tanh_call.theta() << '\n' << "rho: " << asian_tanh_call.rho() << '\n'
-            << "vega: " << asian_tanh_call.vega() << endl;
-
-
-        std::function<double(double, double)> path_payoff_sin_tanh_abs{
-            [](double path_avg, double S) { return std::abs(std::sin((path_avg - std::tanh(S)) / (std::tanh(S) / 10.0))); }
-        };
-
-        Terms terms_asian_tanh_sin_abs{ Terms::Style::AsianExotic, Terms::Type::Other, T, path_payoff_sin_tanh_abs,
-                                     path_accum_tanh, 0.0 };
-        Option asian_tanh_sin_abs{ terms_asian_tanh_sin_abs, underlying_asian2 };
-        antithetic = true;
-        get_greeks = true;
-        sd_prc = 0.0;
-        asian_tanh_sin_abs.MC_prc(N_sims, N_steps, r, get_greeks, antithetic, sd_prc);
-        cout << "\nAsianExotic abs(sin(tanh_path_avg)) MC pricer with N_sims: " << N_sims << ", N_steps: " << N_steps << '\n'
-            << "r    Style     AvgType Class  K  T  S_o  q  sigma\n"
-            << r << ' ' << asian_tanh_sin_abs << ":\n"
-            << "price: " << asian_tanh_sin_abs.price() << ", std_dev: " << sd_prc << '\n'
-            << "delta: " << asian_tanh_sin_abs.delta() << '\n' << "gamma: " << asian_tanh_sin_abs.gamma() << '\n'
-            << "theta: " << asian_tanh_sin_abs.theta() << '\n' << "rho: " << asian_tanh_sin_abs.rho() << '\n'
-            << "vega: " << asian_tanh_sin_abs.vega() << endl;
-
-
-        std::function<double(double, double)> path_payoff_sin_tanh{
-            [](double path_avg, double S) { return std::sin((path_avg - std::tanh(S)) / (std::tanh(S) / 10.0)); }
-        };
-
-        Terms terms_asian_tanh_sin{ Terms::Style::AsianExotic, Terms::Type::Other, T, path_payoff_sin_tanh,
-                                     path_accum_tanh, 0.0 };
-        Option asian_tanh_sin{ terms_asian_tanh_sin, underlying_asian2 };
-        antithetic = true;
-        get_greeks = true;
-        sd_prc = 0.0;
-        asian_tanh_sin.MC_prc(N_sims, N_steps, r, get_greeks, antithetic, sd_prc);
-        cout << "\nAsianExotic sin(tanh_path_avg) MC pricer with N_sims: " << N_sims << ", N_steps: " << N_steps << '\n'
-            << "r    Style     AvgType Class  K  T  S_o  q  sigma\n"
-            << r << ' ' << asian_tanh_sin << ":\n"
-            << "price: " << asian_tanh_sin.price() << ", std_dev: " << sd_prc << '\n'
-            << "delta: " << asian_tanh_sin.delta() << '\n' << "gamma: " << asian_tanh_sin.gamma() << '\n'
-            << "theta: " << asian_tanh_sin.theta() << '\n' << "rho: " << asian_tanh_sin.rho() << '\n'
-            << "vega: " << asian_tanh_sin.vega() << endl;
-
-        /* need euro_put -> euro_straddle:
-            euro_put.btree_prc(N_steps, r, get_greeks);
-            cout << "\nOn Binary pricing tree with N_steps: " << N_steps << '\n'
-                << "Style    Class  K   T     S_o q sigma\n"
-                << euro_put << ":\n"
-                << "price: " << euro_put.price() << '\n'
-                << "delta: " << euro_put.delta() << '\n' << "gamma: " << euro_put.gamma() << '\n'
-                << "theta: " << euro_put.theta() << '\n' << "rho: " << euro_put.rho() << '\n'
-                << "vega: " << euro_put.vega() << endl;
-
-            sd_prc = 0.0;
-            euro_put.MC_prc(N_sims, N_steps, r, get_greeks, antithetic, sd_prc);
-            cout << "\nEuro put with Monte Carlo pricer with N_sims: " << N_sims << ", N_steps: " << N_steps << '\n'
-                << "Style    Class  K   T     S_o q sigma\n"
-                << euro_put << ":\n"
-                << "price: " << euro_put.price() << ", std_dev: " << sd_prc << '\n'
-                << "delta: " << euro_put.delta() << '\n' << "gamma: " << euro_put.gamma() << '\n'
-                << "theta: " << euro_put.theta() << '\n' << "rho: " << euro_put.rho() << '\n'
-                << "vega: " << euro_put.vega() << endl;
-        */
+        euro_put.MC_prc(N_sims, N_steps, r, get_greeks, antithetic, sd_prc);
+        cout << "\nEuro put with Monte Carlo pricer with N_sims: " << N_sims << ", N_steps: " << N_steps << '\n'
+            << "Style    Class  K   T     S_o q sigma\n"
+            << euro_put << ":\n"
+            << "price: " << euro_put.price() << ", std_dev: " << sd_prc << '\n'
+            << "delta: " << euro_put.delta() << '\n' << "gamma: " << euro_put.gamma() << '\n'
+            << "theta: " << euro_put.theta() << '\n' << "rho: " << euro_put.rho() << '\n'
+            << "vega: " << euro_put.vega() << endl;
+    */
 }
 
 /*
