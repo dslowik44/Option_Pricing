@@ -231,23 +231,42 @@ int main() {
         << "theta: " << asianprc_put_geom.theta() << '\n' << "rho: " << asianprc_put_geom.rho() << '\n'
         << "vega: " << asianprc_put_geom.vega() << endl;
 
-    // next:
-
+    // Price an AsianExotic, arithmetic path avg is the payoff:
     std::function<double(double, double)> path_payoff{
         [](double path_avg, double) { return path_avg; }
     };
 
+    T = 6 / 12.0;
+    Terms terms_asianex_arith{ Terms::Style::AsianExotic, Terms::Type::Other, T, path_payoff,
+                               Terms::arith_path_accum_fn, 0.0 };
     S_o = 49.0;
+    q = 0.01;
+    sigma = 0.3;
+    Asset underlying_asian2{ S_o, q, sigma };
+    Option asianex_arith(terms_asianex_arith, underlying_asian2);
+    r = 0.07;
+    N_steps = 1000;
+    N_sims = 10000;
+    antithetic = true;
+    get_greeks = true;
+    sd_prc = 0.0;
+    asianex_arith.MC_prc(N_sims, N_steps, r, get_greeks, antithetic, sd_prc);
+    cout << "\nAsianExotic arithmetic_avg payoff MC pricer with N_sims: " << N_sims << ", N_steps: " << N_steps << '\n'
+        << "r    Style     AvgType Class  K  T  S_o  q  sigma\n"
+        << r << ' ' << asianex_arith << ":\n"
+        << "price: " << asianex_arith.price() << ", std_dev: " << sd_prc << '\n'
+        << "delta: " << asianex_arith.delta() << '\n' << "gamma: " << asianex_arith.gamma() << '\n'
+        << "theta: " << asianex_arith.theta() << '\n' << "rho: " << asianex_arith.rho() << '\n'
+        << "vega: " << asianex_arith.vega() << endl;
+
+    // AsianExotic pays off tanh average:
     std::function<void(int, double, double&)> path_accum_tanh{
         [S_o](int idx, double S, double& accum) { accum += (std::tanh(S / S_o) - accum) / idx; }
     };
 
-    T = 6 / 12.0;
+    T = 6/12.0;
     Terms terms_asian_tanh_call{ Terms::Style::AsianExotic, Terms::Type::Other, T, path_payoff,
                                  path_accum_tanh, 0.0 };
-    q = 0.0;
-    sigma = 0.3;
-    Asset underlying_asian2{ S_o, q, sigma };
     Option asian_tanh_call(terms_asian_tanh_call, underlying_asian2);
     r = 0.07;
     N_steps = 1000;
@@ -264,7 +283,7 @@ int main() {
         << "theta: " << asian_tanh_call.theta() << '\n' << "rho: " << asian_tanh_call.rho() << '\n'
         << "vega: " << asian_tanh_call.vega() << endl;
 
-
+    // abs(sin(tanh_path_avg)) payoff function:
     std::function<double(double, double)> path_payoff_sin_tanh_abs{
         [](double path_avg, double S) { return std::abs(std::sin((path_avg - std::tanh(S)) / (std::tanh(S) / 10.0))); }
     };
@@ -284,7 +303,7 @@ int main() {
         << "theta: " << asian_tanh_sin_abs.theta() << '\n' << "rho: " << asian_tanh_sin_abs.rho() << '\n'
         << "vega: " << asian_tanh_sin_abs.vega() << endl;
 
-
+    // AsianExotic sin(tanh_path_avg) payoff:
     std::function<double(double, double)> path_payoff_sin_tanh{
         [](double path_avg, double S) { return std::sin((path_avg - std::tanh(S)) / (std::tanh(S) / 10.0)); }
     };
