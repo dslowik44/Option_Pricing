@@ -77,6 +77,7 @@ namespace OptionPricing {
 
     Terms::Terms(Style s, Type t, double T, std::function<double(double)> payoff)
         // Set terms of Euro or Amer option that is not Call or Put (i.e. is Other)
+        // User provides the non-vanilla payoff function.
         try : _style{ s }, _type{ t }, _T{ T }, _K{ -1 }, _avg_type{ AvgType::None } {
         if ((s != Style::Amer && s != Style::Euro) || t != Type::Other || _T <= 0) {
             throw std::invalid_argument("Must provide Euro or Amer with valid T\n \
@@ -123,7 +124,7 @@ namespace OptionPricing {
 
     double Option::btree_prc(int N_steps, double r, bool get_greeks) {
         Greeks* g_ptr{ get_greeks ? &_greeks : nullptr };
-        _prc = btree_prc_terms_assets(_terms, _asset, N_steps, r, g_ptr);
+        _prc = btree_prc_terms_asset(_terms, _asset, N_steps, r, g_ptr);
         return _prc;
     }
 
@@ -131,7 +132,7 @@ namespace OptionPricing {
         return opt.btree_prc(N_steps, r, greeks);
     }
 
-    double btree_prc_terms_assets(const Terms& t, const Asset& a, int N_steps, double r,
+    double btree_prc_terms_asset(const Terms& t, const Asset& a, int N_steps, double r,
         Option::Greeks* g_ptr) {
         if (t.style() != Terms::Style::Amer && t.style() != Terms::Style::Euro) {
             throw std::invalid_argument("In btree_prc_raw, Bad Terms::Style.");
@@ -241,7 +242,7 @@ namespace OptionPricing {
 
     double Option::MC_prc(int N_sims, int N_steps, double r, bool get_greeks, bool antithetic, double& sd_prc) {
         Greeks* g_ptr{ get_greeks ? &_greeks : nullptr };
-        _prc = MC_prc_terms_assets(_terms, _asset, N_sims, N_steps, r, g_ptr, antithetic, sd_prc);
+        _prc = MC_prc_terms_asset(_terms, _asset, N_sims, N_steps, r, g_ptr, antithetic, sd_prc);
         return _prc;
     }
 
@@ -249,10 +250,10 @@ namespace OptionPricing {
         return opt.MC_prc(N_sims, N_steps, r, greeks, antithetic, sd_prc);
     }
 
-    double MC_prc_terms_assets(const Terms& t, const Asset& a, int N_sims, int N_steps, double r,
+    double MC_prc_terms_asset(const Terms& t, const Asset& a, int N_sims, int N_steps, double r,
         Option::Greeks* g_ptr, bool antithetic, double& sd_prc) {
         if (t.style() == Terms::Style::Amer) {
-            throw std::invalid_argument("In MC_prc_terms_assets, Can't price Amer option via MC.");
+            throw std::invalid_argument("In MC_prc_terms_asset, Can't price Amer option via MC.");
         }
         return MC_prc_raw(N_sims, N_steps, r, t.style(), t.T(), t.payoff_fn(), t.path_payoff(),
             t.path_accum(), t.init_accum(), a.S_o(), a.q(), a.sigma(), g_ptr, antithetic, sd_prc);
@@ -276,7 +277,7 @@ namespace OptionPricing {
         std::normal_distribution<> norm{ };
 
         double cumm_P{ 0.0 };
-        double ssq{ 0.0 };
+        double ssq{ 0.0 };  // track ssq for Var[P] estimate.
         if (style == Terms::Style::Euro) {
             // Can by-pass path stepping and just simulate final risk-neutral asset price at time T:
             double sd = sigma * sqrt(T);
@@ -287,9 +288,9 @@ namespace OptionPricing {
                         double eps = norm(gen);
                         double P = payoff(S_o * exp(g * T + eps * sd));
                         cumm_P += P;
-                        ssq += P * P;
+                        ssq += P * P; 
                     }
-                } else {
+                } else {  // antithetic: avg +eps result with -eps result on each sim, i:
                     for (int i = 0; i < N_sims; ++i) {
                         double eps = norm(gen);
                         double P = (payoff(S_o * exp(g * T + eps * sd)) +
@@ -299,7 +300,7 @@ namespace OptionPricing {
                     }
                 }
             } else {      // valid g_ptr, get greeks:
-                double incr = 0.01;
+                double incr = 0.01;  // Fractional increment to underlying variable for each greek.
                 double S_o_up{ (1. + incr) * S_o }, S_o_dn{ (1. - incr) * S_o }, g_rho_up{ g + incr * r };
                 double cumm_delta_up{ 0 }, cumm_delta_dn{ 0 }, cumm_rho_up{ 0 }, cumm_theta_up{ 0 }, cumm_vega_up{ 0 };
                 double sigma_up{ (1 + incr) * sigma };
@@ -309,6 +310,7 @@ namespace OptionPricing {
                         double P = payoff(S_o * exp(g * T + eps * sd));
                         cumm_P += P;
                         ssq += P * P;
+                        // and now accumulate for the greeks:
                         cumm_delta_up += payoff(S_o_up * exp(g * T + eps * sd));
                         cumm_delta_dn += payoff(S_o_dn * exp(g * T + eps * sd));
                         cumm_rho_up += payoff(S_o * exp(g_rho_up * T + eps * sd));
@@ -348,10 +350,10 @@ namespace OptionPricing {
                 g_ptr->theta = df * (exp(r * incr * T) * cumm_theta_up - cumm_P) / (N_sims * incr * T);
                 g_ptr->vega = df * (cumm_vega_up - cumm_P) / (N_sims * incr * sigma);
             }
-        } else { // Asian must simulate each time step:
+        } else { // Asian, like Euro but must simulate each time step:
             double dt = T / N_steps;
             double sd = sigma * sqrt(dt);
-            double path_mean;
+            double path_mean;  // Asians track path means of price, and optionally greeks.
             double S;
             if (!g_ptr) { // nullptr -skip greeks
                 if (!antithetic) {
@@ -393,10 +395,10 @@ namespace OptionPricing {
             } else { // valid g_ptr, get greeks:
                 double incr = 0.01;
                 double sigma_up{ (1 + incr) * sigma };
-                // Initialize accumulators before the N_sims:
+                // Introduce and Initialize new accumulators(needed for the greeks) before the N_sims:
                 double cumm_delta_up{ 0 }, cumm_delta_dn{ 0 }, cumm_rho_up{ 0 },
                     cumm_theta_up{ 0 }, cumm_vega_up{ 0 };
-                // S, path_mean and the following 7 path accumulators get reset for each of the N_sims by init_sim[&]():
+                // S, path_mean and the following 8 path accumulators get reset for each of the N_sims by init_sim[&]():
                 double S_rho_up, S_theta_up, S_vega_up;
                 double path_mean_up, path_mean_dn;
                 double pm_rho_up, pm_vega_up, pm_theta_up;
@@ -431,7 +433,7 @@ namespace OptionPricing {
                             cumm_rho_up += payoff(pm_rho_up);
                             cumm_vega_up += payoff(pm_vega_up);
                             cumm_theta_up += payoff(pm_theta_up);
-                        } else {
+                        } else {  // AsianStrike and AsianExotic payoff depends on path_means and S(T):
                             P = path_payoff(path_mean, S);
                             cumm_delta_up += path_payoff(path_mean_up, S * (1 + incr));
                             cumm_delta_dn += path_payoff(path_mean_dn, S * (1 - incr));
@@ -476,7 +478,7 @@ namespace OptionPricing {
                                 pm_theta_up = path_mean;
                                 S_theta_up = S;
                             }
-                            // Same for antithetic path:
+                            // Same for antithetic path, just replace +eps with -eps:
                             S_anti *= exp(g * dt - eps * sd);
                             path_accum_fn(j + 1, S_anti, path_mean_anti);
                             path_accum_fn(j + 1, S_anti * (1 + incr), path_mean_up_anti);
@@ -523,7 +525,7 @@ namespace OptionPricing {
         }
 
         double mean_P = cumm_P / N_sims;
-        sd_mean_PV = df * sqrt((ssq - N_sims * mean_P * mean_P)) / (N_sims - 1);
+        sd_mean_PV = df * sqrt( ( (ssq - N_sims*mean_P*mean_P) / (N_sims-1)) / N_sims);
         double mean_PV = df * mean_P;
 
         /* // These had much higher variance than by using same sample paths for up/down estimates..

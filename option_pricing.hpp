@@ -49,8 +49,6 @@ namespace OptionPricing {
         std::function<void(int, double, double&)> path_accum() const { return _path_accum_fn; }
         double init_accum() const { return _init_accum; }
 
-        double payoff(double S) const { return _payoff(S); }
-
     private:
         const Style _style;
         const Type _type;
@@ -72,15 +70,12 @@ namespace OptionPricing {
         double MC_prc(int N_sims, int N_steps, double r, bool get_greeks,
             bool antithetic, double& sd_prc);
 
-
         struct Greeks {
             double delta{ 0 };
             double gamma{ 0 };
             double theta{ 0 };
             double   rho{ 0 };
             double  vega{ 0 };
-            double delta2{ 0 };
-            double theta2{ 0 };
         };
 
         Terms  terms() const { return _terms; }
@@ -92,8 +87,6 @@ namespace OptionPricing {
         double theta() const { return _greeks.theta; }
         double   rho() const { return _greeks.rho; }
         double  vega() const { return _greeks.vega; }
-        double delta2() { return _greeks.delta2; }
-        double theta2() { return _greeks.theta2; }
 
     private:
         const Terms _terms;
@@ -104,7 +97,7 @@ namespace OptionPricing {
 
     double btree_prc_opt(Option&, int N_steps, double r, bool greeks);
 
-    double btree_prc_terms_assets(const Terms&, const Asset&, int N_steps, double r,
+    double btree_prc_terms_asset(const Terms&, const Asset&, int N_steps, double r,
         Option::Greeks*); // Note user danger here.
 
     double btree_prc_raw(int N_steps, double r,
@@ -115,7 +108,7 @@ namespace OptionPricing {
     double MC_prc_opt(Option&, int N_sims, int N_steps, double r, bool greeks,
         bool antithetic, double& sd_prc);
 
-    double MC_prc_terms_assets(const Terms&, const Asset&, int N_sims, int N_steps, double r,
+    double MC_prc_terms_asset(const Terms&, const Asset&, int N_sims, int N_steps, double r,
         Option::Greeks*, bool antithetic, double& sd_prc);
 
     double MC_prc_raw(int N_sims, int N_steps, double r,

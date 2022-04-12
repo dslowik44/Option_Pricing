@@ -237,27 +237,27 @@ int main() {
     };
 
     T = 6 / 12.0;
-    Terms terms_asianex_arith{ Terms::Style::AsianExotic, Terms::Type::Other, T, path_payoff,
-                               Terms::arith_path_accum_fn, 0.0 };
+    Terms terms_asianex_geom{ Terms::Style::AsianExotic, Terms::Type::Other, T, path_payoff,
+                               Terms::geom_path_accum_fn, 1.0 };
     S_o = 49.0;
     q = 0.01;
     sigma = 0.3;
     Asset underlying_asian2{ S_o, q, sigma };
-    Option asianex_arith(terms_asianex_arith, underlying_asian2);
+    Option asianex_geom(terms_asianex_geom, underlying_asian2);
     r = 0.07;
     N_steps = 1000;
     N_sims = 10000;
     antithetic = true;
     get_greeks = true;
     sd_prc = 0.0;
-    asianex_arith.MC_prc(N_sims, N_steps, r, get_greeks, antithetic, sd_prc);
-    cout << "\nAsianExotic arithmetic_avg payoff MC pricer with N_sims: " << N_sims << ", N_steps: " << N_steps << '\n'
+    asianex_geom.MC_prc(N_sims, N_steps, r, get_greeks, antithetic, sd_prc);
+    cout << "\nAsianExotic geometric_avg payoff MC pricer with N_sims: " << N_sims << ", N_steps: " << N_steps << '\n'
         << "r    Style     AvgType Class  K  T  S_o  q  sigma\n"
-        << r << ' ' << asianex_arith << ":\n"
-        << "price: " << asianex_arith.price() << ", std_dev: " << sd_prc << '\n'
-        << "delta: " << asianex_arith.delta() << '\n' << "gamma: " << asianex_arith.gamma() << '\n'
-        << "theta: " << asianex_arith.theta() << '\n' << "rho: " << asianex_arith.rho() << '\n'
-        << "vega: " << asianex_arith.vega() << endl;
+        << r << ' ' << asianex_geom << ":\n"
+        << "price: " << asianex_geom.price() << ", std_dev: " << sd_prc << '\n'
+        << "delta: " << asianex_geom.delta() << '\n' << "gamma: " << asianex_geom.gamma() << '\n'
+        << "theta: " << asianex_geom.theta() << '\n' << "rho: " << asianex_geom.rho() << '\n'
+        << "vega: " << asianex_geom.vega() << endl;
 
     // AsianExotic pays off tanh average:
     std::function<void(int, double, double&)> path_accum_tanh{
@@ -323,30 +323,8 @@ int main() {
         << "theta: " << asian_tanh_sin.theta() << '\n' << "rho: " << asian_tanh_sin.rho() << '\n'
         << "vega: " << asian_tanh_sin.vega() << endl;
 
-    /* need euro_put -> euro_straddle:
-        euro_put.btree_prc(N_steps, r, get_greeks);
-        cout << "\nOn Binary pricing tree with N_steps: " << N_steps << '\n'
-            << "Style    Class  K   T     S_o q sigma\n"
-            << euro_put << ":\n"
-            << "price: " << euro_put.price() << '\n'
-            << "delta: " << euro_put.delta() << '\n' << "gamma: " << euro_put.gamma() << '\n'
-            << "theta: " << euro_put.theta() << '\n' << "rho: " << euro_put.rho() << '\n'
-            << "vega: " << euro_put.vega() << endl;
 
-        sd_prc = 0.0;
-        euro_put.MC_prc(N_sims, N_steps, r, get_greeks, antithetic, sd_prc);
-        cout << "\nEuro put with Monte Carlo pricer with N_sims: " << N_sims << ", N_steps: " << N_steps << '\n'
-            << "Style    Class  K   T     S_o q sigma\n"
-            << euro_put << ":\n"
-            << "price: " << euro_put.price() << ", std_dev: " << sd_prc << '\n'
-            << "delta: " << euro_put.delta() << '\n' << "gamma: " << euro_put.gamma() << '\n'
-            << "theta: " << euro_put.theta() << '\n' << "rho: " << euro_put.rho() << '\n'
-            << "vega: " << euro_put.vega() << endl;
-    */
-}
-
-/*
-    // Ex 21.3:
+    // Ex 21.3 of Hull, 11th ed:
     K = 300.0;
     T = 4. / 12.;
     Terms terms2{ Terms::Style::Amer, Terms::Type::Call, T, K };
@@ -356,7 +334,7 @@ int main() {
     sigma = 0.30;
     Asset idx_fut{ S_o, q, sigma };
     Option amer_call_idx_fut{ terms2, idx_fut };
-    N_steps = 1000;
+    N_steps = 100;
     amer_call_idx_fut.btree_prc(N_steps, r, true);
     cout << "\n Hull, Example 21.3, American Call on index futures contract, N_steps: " << N_steps << '\n'
         << "r   Style    Type  K   T     S_o q sigma\n"
@@ -375,7 +353,7 @@ int main() {
 
     Option::Greeks greeks{};
     cout << "\n Called via namespace function btree_prc_terms_assets: \n"
-        << "price: " << btree_prc_terms_assets(terms2, idx_fut, N_steps, r, &greeks) << '\n'
+        << "price: " << btree_prc_terms_asset(terms2, idx_fut, N_steps, r, &greeks) << '\n'
         << "delta: " << greeks.delta << '\n' << "gamma: " << greeks.gamma << '\n'
         << "theta: " << greeks.theta << '\n' << "rho: " << greeks.rho << '\n'
         << "vega: " << greeks.vega << endl;
@@ -386,4 +364,5 @@ int main() {
         << "theta: " << greeks.theta << '\n' << "rho: " << greeks.rho << '\n'
         << "vega: " << greeks.vega << endl;
 
-*/
+}
+

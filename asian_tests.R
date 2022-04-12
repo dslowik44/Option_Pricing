@@ -12,3 +12,11 @@ AsianOption("geometric", "put", 49.0, 50.0, 0.0, .07, 0.5, 0.3, length=0.5, fixi
 AsianOption("geometric", "put", 49.0, 50.0, 0.0, .07, 0.5, 0.3, length=0.05, fixings=10)
 
 AsianOption("geometric", "put", 49.0, 50.0, 0.0, .07, 0.5, 0.3)
+
+
+AsianOption("geometric", "call", 49.0, 0.0, 0.01, .07, 0.5, 0.3)
+
+
+AmericanOption(type="call", underlying=300, strike=300, dividendYield=0.08, 
+riskFreeRate=0.08, maturity=4/12, volatility=0.3, engine="CrankNicolson")
+
