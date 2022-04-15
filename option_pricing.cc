@@ -272,7 +272,7 @@ namespace OptionPricing {
 
         // long unsigned int seed = 1;    // Replace next 2 lines with these 2 for reproducing random 
         // static std::mt19937 gen{seed}; // bit streams for testing.
-        std::random_device rd;
+        static std::random_device rd;
         static std::mt19937 gen{ rd() };
         std::normal_distribution<> norm{ };
 
