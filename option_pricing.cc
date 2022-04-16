@@ -270,10 +270,9 @@ namespace OptionPricing {
         double g = r - q - sigma * sigma / 2;  // risk neutral growth rate of lnS.
         double df = exp(-r * T);
 
-        // long unsigned int seed = 1;    // Replace next 2 lines with these 2 for reproducing random 
+        // long unsigned int seed = 1;    // Replace next line with these 2 for reproducing random 
         // static std::mt19937 gen{seed}; // bit streams for testing.
-        static std::random_device rd;
-        static std::mt19937 gen{ rd() };
+        static std::mt19937 gen{ (std::random_device{})() };
         std::normal_distribution<> norm{ };
 
         double cumm_P{ 0.0 };
