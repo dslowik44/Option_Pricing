@@ -112,9 +112,9 @@ namespace OptionPricing {
         Option::Greeks*, bool antithetic, double& sd_prc);
 
     double MC_prc_raw(int N_sims, int N_steps, double r,
-        Terms::Style style, double T, std::function<double(double)> payoff,
-        std::function<double(double, double)> path_payoff,
-        std::function<void(int, double, double&)> path_accum, double init_accum,
+        Terms::Style style, double T, const std::function<double(double)>& payoff,
+        const std::function<double(double, double)>& path_payoff,
+        const std::function<void(int, double, double&)>& path_accum, double init_accum,
         double S_o, double q, double sigma, Option::Greeks*,
         bool antithetic, double& sd_prc);
 
