@@ -3,8 +3,6 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
-#include <iostream>
-#include <random>
 
 using std::exp;
 using std::sqrt;
@@ -258,6 +256,7 @@ namespace OptionPricing {
             t.path_accum(), t.init_accum(), a.S_o(), a.q(), a.sigma(), g_ptr, antithetic, sd_prc);
     }
 
+
     double MC_prc_raw(const int N_sims, const int N_steps, const double r, const Terms::Style style, double T, const std::function<double(double)>& payoff,
         const std::function<double(double, double)>& path_payoff, const std::function<void(int, double, double&)>& path_accum_fn, const double init_accum,
         const double S_o, const double q, const double sigma, Option::Greeks* const g_ptr, const bool antithetic, double& sd_mean_PV) {
@@ -266,332 +265,312 @@ namespace OptionPricing {
             throw std::invalid_argument("In MC_prc_raw, no Amer terms allowed. \n");
         }
 
+        using namespace MC_InternalUtilities;
+
         double mean_PV{ 0.0 };
         if (style == Terms::Style::Euro) {
-            double MC_prc_Euro(int, double, double, const std::function<double(double)>&,
-                double, double, double, Option::Greeks*, bool, double&);
             mean_PV = MC_prc_Euro(N_sims, r, T, payoff, S_o, q, sigma, g_ptr, antithetic, sd_mean_PV);
         } else { // Asian, like Euro but must simulate each time step:
-            double MC_prc_Asian(int, const int, double, Terms::Style, double, const std::function<double(double)>&,
-                const std::function<double(double, double)>&, const std::function<void(int, double, double&)>&, double,
-                double, double, double, Option::Greeks*, bool, double&);
             mean_PV = MC_prc_Asian(N_sims, N_steps, r, style, T, payoff, path_payoff, path_accum_fn, init_accum, S_o, q, sigma, g_ptr, antithetic, sd_mean_PV);
         }
 
-        /* // These had much higher variance than by using same sample paths for up/down estimates..
-                if (g_ptr) {
-                    double incr = 0.01;
-                    double delta_up = (MC_prc_raw(N_sims, N_steps, r, style, T, payoff, path_payoff, path_accum_fn,
-                        (1 + incr) * S_o, q, sigma, nullptr, antithetic, sd_mean_P) - mean_P) / (incr * S_o);
-                    double delta_down = (mean_P - MC_prc_raw(N_sims, N_steps, r, style, T, payoff, path_payoff, path_accum_fn,
-                        (1 - incr) * S_o, q, sigma, nullptr, antithetic, sd_mean_P)) / (incr * S_o);
-                    g_ptr->delta = (delta_down + delta_up) / 2.0;
-                    g_ptr->gamma = (delta_up - delta_down) / (incr * S_o);
-                    g_ptr->rho = (MC_prc_raw(N_sims, N_steps, (1 + incr) * r, style, T, payoff, path_payoff, path_accum_fn,
-                        S_o, q, sigma, nullptr, antithetic, sd_mean_P) - mean_P) / (incr * r);
-                    g_ptr->vega = (MC_prc_raw(N_sims, N_steps, r, style, T, payoff, path_payoff, path_accum_fn,
-                        S_o, q, (1 + incr) * sigma, nullptr, antithetic, sd_mean_P) - mean_P) / (incr * sigma);
-                    g_ptr->theta = (MC_prc_raw(N_sims, N_steps, r, style, (1 - incr) * T, payoff, path_payoff, path_accum_fn,
-                        S_o, q, sigma, nullptr, antithetic, sd_mean_P) - mean_P) / (incr * T);
-                }
-        */
         return mean_PV;
     }
 
-    double MC_prc_Euro(const int N_sims, const double r, const double T, const std::function<double(double)>& payoff,
-        const double S_o, const double q, const double sigma, Option::Greeks* const g_ptr, const bool antithetic,
-        double& sd_mean_PV) {
-        // Perform MC simulation on Terms::Style::Euro options.
-        // Returns the average price as mean_PV, also calculates it's standard deviation in sd_mean_PV.
+    namespace MC_InternalUtilities { // Some functions used by MC_prc_raw.
+        double MC_prc_Euro(const int N_sims, const double r, const double T, const std::function<double(double)>& payoff,
+            const double S_o, const double q, const double sigma, Option::Greeks* const g_ptr, const bool antithetic,
+            double& sd_mean_PV) {
+            // Perform MC simulation on Terms::Style::Euro options.
+            // Returns the average price as mean_PV, also calculates it's standard deviation in sd_mean_PV.
 
-        double cumm_P{ 0.0 };  // To accumulate the payoffs obtained from each MC run.
-        double ssq{ 0.0 };     // To accumulate the sum of their squares for stddev calculation.
+            double cumm_P{ 0.0 };  // To accumulate the payoffs obtained from each MC run.
+            double ssq{ 0.0 };     // To accumulate the sum of their squares for stddev calculation.
 
-        std::mt19937& MC_get_rndm_gen();
-        std::mt19937& gen{ MC_get_rndm_gen() };  // Mersenne twister random number generator to feed norm.
-        std::normal_distribution norm{};         // Normal distribution to generate eps.
+            std::mt19937& gen{ MC_get_rndm_gen() };  // Mersenne twister random number generator to feed norm.
+            std::normal_distribution norm{};         // Normal distribution to generate eps.
 
-        // Prepare some algebraic values used in the calculations:
-        const double sd = sigma * sqrt(T);
-        const double g = r - q - sigma * sigma / 2;  // risk neutral growth rate of lnS.
-        const double df = exp(-r * T);
-        if (!g_ptr) {  // nullptr, skip greeks:
-            if (!antithetic) {
-                for (int i = 0; i < N_sims; ++i) {
-                    double eps = norm(gen);
-                    double P = payoff(S_o * exp(g * T + eps * sd));
-                    cumm_P += P;
-                    ssq += P * P;
+            // Prepare some algebraic values used in the calculations:
+            const double sd = sigma * sqrt(T);
+            const double g = r - q - sigma * sigma / 2;  // risk neutral growth rate of lnS.
+            const double df = exp(-r * T);
+            if (!g_ptr) {  // nullptr, skip greeks:
+                if (!antithetic) {
+                    for (int i = 0; i < N_sims; ++i) {
+                        double eps = norm(gen);
+                        double P = payoff(S_o * exp(g * T + eps * sd));
+                        cumm_P += P;
+                        ssq += P * P;
+                    }
+                } else {  // antithetic: avg +eps result with -eps result on each sim, i:
+                    for (int i = 0; i < N_sims; ++i) {
+                        double eps = norm(gen);
+                        double P = (payoff(S_o * exp(g * T + eps * sd)) +
+                            payoff(S_o * exp(g * T - eps * sd))) / 2;
+                        cumm_P += P;
+                        ssq += P * P;
+                    }
                 }
-            } else {  // antithetic: avg +eps result with -eps result on each sim, i:
-                for (int i = 0; i < N_sims; ++i) {
-                    double eps = norm(gen);
-                    double P = (payoff(S_o * exp(g * T + eps * sd)) +
-                        payoff(S_o * exp(g * T - eps * sd))) / 2;
-                    cumm_P += P;
-                    ssq += P * P;
+            } else {      // valid g_ptr, get greeks:
+                double incr = 0.01;  // Fractional increment to underlying variable for each greek.
+                double S_o_up{ (1. + incr) * S_o }, S_o_dn{ (1. - incr) * S_o }, g_rho_up{ g + incr * r };
+                double cumm_delta_up{ 0 }, cumm_delta_dn{ 0 }, cumm_rho_up{ 0 }, cumm_theta_up{ 0 }, cumm_vega_up{ 0 };
+                double sigma_up{ (1 + incr) * sigma };
+                if (!antithetic) {
+                    for (int i = 0; i < N_sims; ++i) {
+                        double eps = norm(gen);
+                        double P = payoff(S_o * exp(g * T + eps * sd));
+                        cumm_P += P;
+                        ssq += P * P;
+                        // and now accumulate for the greeks:
+                        cumm_delta_up += payoff(S_o_up * exp(g * T + eps * sd));
+                        cumm_delta_dn += payoff(S_o_dn * exp(g * T + eps * sd));
+                        cumm_rho_up += payoff(S_o * exp(g_rho_up * T + eps * sd));
+                        cumm_theta_up += payoff(S_o * exp(g * (1 - incr) * T + eps * sigma * sqrt((1 - incr) * T)));
+                        cumm_vega_up += payoff(S_o * exp((r - q - sigma_up * sigma_up / 2) * T + eps * sigma_up * sqrt(T)));
+                    }
+                } else {
+                    for (int i = 0; i < N_sims; ++i) {
+                        double eps = norm(gen);
+                        double P = (payoff(S_o * exp(g * T + eps * sd)) +
+                            payoff(S_o * exp(g * T - eps * sd))) / 2;
+                        cumm_P += P;
+                        ssq += P * P;
+                        cumm_delta_up += (payoff(S_o_up * exp(g * T + eps * sd)) +
+                            payoff(S_o_up * exp(g * T - eps * sd))) / 2;
+                        cumm_delta_dn += (payoff(S_o_dn * exp(g * T + eps * sd)) +
+                            payoff(S_o_dn * exp(g * T - eps * sd))) / 2;
+                        cumm_rho_up += (payoff(S_o * exp(g_rho_up *
+                            T + eps * sd)) +
+                            payoff(S_o * exp(g_rho_up * T - eps * sd))) / 2;
+                        cumm_theta_up += (payoff(S_o * exp(g * (1 - incr) * T + eps * sigma * sqrt((1 - incr) * T))) +
+                            payoff(S_o * exp(g * (1 - incr) * T - eps * sigma * sqrt((1 - incr) * T)))) / 2;
+                        cumm_vega_up += (payoff(S_o * exp((r - q - sigma_up * sigma_up / 2) * T + eps * sigma_up * sqrt(T))) +
+                            payoff(S_o * exp((r - q - sigma_up * sigma_up / 2) * T - eps * sigma_up * sqrt(T)))) / 2;
+                    }
                 }
+                /* By linearity these greeks have been calculated once in terms of the accumulated
+                   values. To estimate their stddevs, as we do for price, they would need to be moved inside
+                   the loop over N_sims to and the squares of their values accumulated. The code as
+                   written is much more compact/readable...
+                   */
+                double delta_up = df * (cumm_delta_up - cumm_P) / (N_sims * incr * S_o);
+                double delta_dn = df * (cumm_P - cumm_delta_dn) / (N_sims * incr * S_o);
+                g_ptr->delta = (delta_dn + delta_up) / 2.0;
+                g_ptr->gamma = (delta_up - delta_dn) / (incr * S_o);
+                g_ptr->rho = df * (exp(-incr * r * T) * cumm_rho_up - cumm_P) / (N_sims * incr * r);
+                g_ptr->theta = df * (exp(r * incr * T) * cumm_theta_up - cumm_P) / (N_sims * incr * T);
+                g_ptr->vega = df * (cumm_vega_up - cumm_P) / (N_sims * incr * sigma);
             }
-        } else {      // valid g_ptr, get greeks:
-            double incr = 0.01;  // Fractional increment to underlying variable for each greek.
-            double S_o_up{ (1. + incr) * S_o }, S_o_dn{ (1. - incr) * S_o }, g_rho_up{ g + incr * r };
-            double cumm_delta_up{ 0 }, cumm_delta_dn{ 0 }, cumm_rho_up{ 0 }, cumm_theta_up{ 0 }, cumm_vega_up{ 0 };
-            double sigma_up{ (1 + incr) * sigma };
-            if (!antithetic) {
-                for (int i = 0; i < N_sims; ++i) {
-                    double eps = norm(gen);
-                    double P = payoff(S_o * exp(g * T + eps * sd));
-                    cumm_P += P;
-                    ssq += P * P;
-                    // and now accumulate for the greeks:
-                    cumm_delta_up += payoff(S_o_up * exp(g * T + eps * sd));
-                    cumm_delta_dn += payoff(S_o_dn * exp(g * T + eps * sd));
-                    cumm_rho_up += payoff(S_o * exp(g_rho_up * T + eps * sd));
-                    cumm_theta_up += payoff(S_o * exp(g * (1 - incr) * T + eps * sigma * sqrt((1 - incr) * T)));
-                    cumm_vega_up += payoff(S_o * exp((r - q - sigma_up * sigma_up / 2) * T + eps * sigma_up * sqrt(T)));
-                }
-            } else {
-                for (int i = 0; i < N_sims; ++i) {
-                    double eps = norm(gen);
-                    double P = (payoff(S_o * exp(g * T + eps * sd)) +
-                        payoff(S_o * exp(g * T - eps * sd))) / 2;
-                    cumm_P += P;
-                    ssq += P * P;
-                    cumm_delta_up += (payoff(S_o_up * exp(g * T + eps * sd)) +
-                        payoff(S_o_up * exp(g * T - eps * sd))) / 2;
-                    cumm_delta_dn += (payoff(S_o_dn * exp(g * T + eps * sd)) +
-                        payoff(S_o_dn * exp(g * T - eps * sd))) / 2;
-                    cumm_rho_up += (payoff(S_o * exp(g_rho_up *
-                        T + eps * sd)) +
-                        payoff(S_o * exp(g_rho_up * T - eps * sd))) / 2;
-                    cumm_theta_up += (payoff(S_o * exp(g * (1 - incr) * T + eps * sigma * sqrt((1 - incr) * T))) +
-                        payoff(S_o * exp(g * (1 - incr) * T - eps * sigma * sqrt((1 - incr) * T)))) / 2;
-                    cumm_vega_up += (payoff(S_o * exp((r - q - sigma_up * sigma_up / 2) * T + eps * sigma_up * sqrt(T))) +
-                        payoff(S_o * exp((r - q - sigma_up * sigma_up / 2) * T - eps * sigma_up * sqrt(T)))) / 2;
-                }
-            }
-            /* By linearity these greeks have been calculated once in terms of the accumulated
-               values. To estimate their stddevs, as we do for price, they would need to be moved inside
-               the loop over N_sims to and the squares of their values accumulated. The code as
-               written is much more compact/readable...
-               */
-            double delta_up = df * (cumm_delta_up - cumm_P) / (N_sims * incr * S_o);
-            double delta_dn = df * (cumm_P - cumm_delta_dn) / (N_sims * incr * S_o);
-            g_ptr->delta = (delta_dn + delta_up) / 2.0;
-            g_ptr->gamma = (delta_up - delta_dn) / (incr * S_o);
-            g_ptr->rho = df * (exp(-incr * r * T) * cumm_rho_up - cumm_P) / (N_sims * incr * r);
-            g_ptr->theta = df * (exp(r * incr * T) * cumm_theta_up - cumm_P) / (N_sims * incr * T);
-            g_ptr->vega = df * (cumm_vega_up - cumm_P) / (N_sims * incr * sigma);
+
+            double mean_P = cumm_P / N_sims;
+            sd_mean_PV = df * sqrt(((ssq - N_sims * mean_P * mean_P) / (N_sims - 1)) / N_sims);
+            double mean_PV = df * mean_P;
+            return mean_PV;
         }
 
-        double mean_P = cumm_P / N_sims;
-        sd_mean_PV = df * sqrt(((ssq - N_sims * mean_P * mean_P) / (N_sims - 1)) / N_sims);
-        double mean_PV = df * mean_P;
-        return mean_PV;
-    }
+        double MC_prc_Asian(const int N_sims, const int N_steps, const double r, const Terms::Style style, const double T, const std::function<double(double)>& payoff,
+            const std::function<double(double, double)>& path_payoff, const std::function<void(int, double, double&)>& path_accum_fn, const double init_accum,
+            const double S_o, const double q, const double sigma, Option::Greeks* const g_ptr, const bool antithetic,
+            double& sd_mean_PV) {
+            // Perform MC simulation on Terms::Style::Asian* options.
+            // Returns the average price as mean_PV, also calculates it's standard deviation in sd_mean_PV.
 
-    double MC_prc_Asian(const int N_sims, const int N_steps, const double r, const Terms::Style style, const double T, const std::function<double(double)>& payoff,
-        const std::function<double(double, double)>& path_payoff, const std::function<void(int, double, double&)>& path_accum_fn, const double init_accum,
-        const double S_o, const double q, const double sigma, Option::Greeks* const g_ptr, const bool antithetic,
-        double& sd_mean_PV) {
-        // Perform MC simulation on Terms::Style::Asian options.
-        // Returns the average price as mean_PV, also calculates it's standard deviation in sd_mean_PV.
+            double cumm_P{ 0.0 };  // To accumulate the payoffs obtained from each MC run.
+            double ssq{ 0.0 };     // To accumulate the sum of their squares for stddev calculation.
 
-        double cumm_P{ 0.0 };  // To accumulate the payoffs obtained from each MC run.
-        double ssq{ 0.0 };     // To accumulate the sum of their squares for stddev calculation.
+            std::mt19937& MC_get_rndm_gen();
+            std::mt19937& gen{ MC_get_rndm_gen() };  // Mersenne twister random number generator to feed norm.
+            std::normal_distribution norm{};         // Normal distribution to generate eps.
 
-        std::mt19937& MC_get_rndm_gen();
-        std::mt19937& gen{ MC_get_rndm_gen() };  // Mersenne twister random number generator to feed norm.
-        std::normal_distribution norm{};         // Normal distribution to generate eps.
-
-        // Prepare some algebraic values used in the calculations:
-        const double dt = T / N_steps;
-        const double sd = sigma * sqrt(dt);
-        const double g = r - q - sigma * sigma / 2;  // risk neutral growth rate of lnS.
-        const double df = exp(-r * T);
-        double path_mean;  // Asians track path means of price, and optionally greeks.
-        double S;
-        if (!g_ptr) { // nullptr -skip greeks
-            if (!antithetic) {
-                for (int i = 0; i < N_sims; ++i) {
-                    S = S_o;
-                    path_mean = init_accum;
-                    for (int j = 0; j < N_steps; ++j) {
-                        double eps = norm(gen);
-                        S *= exp(g * dt + eps * sd);
-                        path_accum_fn(j + 1, S, path_mean);  // Could use (S_prev + S) / 2.
+            // Prepare some algebraic values used in the calculations:
+            const double dt = T / N_steps;
+            const double sd = sigma * sqrt(dt);
+            const double g = r - q - sigma * sigma / 2;  // risk neutral growth rate of lnS.
+            const double df = exp(-r * T);
+            double path_mean;  // Asians track path means of price, and optionally greeks.
+            double S;
+            if (!g_ptr) { // nullptr -skip greeks
+                if (!antithetic) {
+                    for (int i = 0; i < N_sims; ++i) {
+                        S = S_o;
+                        path_mean = init_accum;
+                        for (int j = 0; j < N_steps; ++j) {
+                            double eps = norm(gen);
+                            S *= exp(g * dt + eps * sd);
+                            path_accum_fn(j + 1, S, path_mean);  // Could use (S_prev + S) / 2.
+                        }
+                        double P = (style == Terms::Style::AsianPrc) ? payoff(path_mean) : path_payoff(path_mean, S);
+                        cumm_P += P;
+                        ssq += P * P;
                     }
-                    double P = (style == Terms::Style::AsianPrc) ? payoff(path_mean) : path_payoff(path_mean, S);
-                    cumm_P += P;
-                    ssq += P * P;
-                }
-            } else { // Perform antithetic sampling:
-                // Introduce the antithetic path 'accumulators':
-                double path_mean_anti;
-                double S_anti;
-                for (int i = 1; i <= N_sims; ++i) {
-                    // Initialize path accumulators prior to this(i) sim/run:
-                    path_mean = init_accum;
-                    path_mean_anti = init_accum;
-                    S = S_o;
-                    S_anti = S_o;
-                    for (int j = 0; j < N_steps; ++j) {
-                        double eps = norm(gen);
-                        S *= exp(g * dt + eps * sd);
-                        path_accum_fn(j + 1, S, path_mean);
-                        S_anti *= exp(g * dt - eps * sd);
-                        path_accum_fn(j + 1, S_anti, path_mean_anti);
+                } else { // Perform antithetic sampling:
+                    // Introduce the antithetic path 'accumulators':
+                    double path_mean_anti;
+                    double S_anti;
+                    for (int i = 1; i <= N_sims; ++i) {
+                        // Initialize path accumulators prior to this(i) sim/run:
+                        path_mean = init_accum;
+                        path_mean_anti = init_accum;
+                        S = S_o;
+                        S_anti = S_o;
+                        for (int j = 0; j < N_steps; ++j) {
+                            double eps = norm(gen);
+                            S *= exp(g * dt + eps * sd);
+                            path_accum_fn(j + 1, S, path_mean);
+                            S_anti *= exp(g * dt - eps * sd);
+                            path_accum_fn(j + 1, S_anti, path_mean_anti);
+                        }
+                        double P = (style == Terms::Style::AsianPrc) ? (payoff(path_mean) + payoff(path_mean_anti)) / 2
+                            : (path_payoff(path_mean, S) + path_payoff(path_mean_anti, S_anti)) / 2;
+                        cumm_P += P;
+                        ssq += P * P;
                     }
-                    double P = (style == Terms::Style::AsianPrc) ? (payoff(path_mean) + payoff(path_mean_anti)) / 2
-                        : (path_payoff(path_mean, S) + path_payoff(path_mean_anti, S_anti)) / 2;
-                    cumm_P += P;
-                    ssq += P * P;
                 }
+            } else { // valid g_ptr, get greeks:
+                double incr = 0.01;
+                double sigma_up{ (1 + incr) * sigma };
+                // Introduce and Initialize new accumulators(needed for the greeks) before the N_sims:
+                double cumm_delta_up{ 0 }, cumm_delta_dn{ 0 }, cumm_rho_up{ 0 },
+                    cumm_theta_up{ 0 }, cumm_vega_up{ 0 };
+                // S, path_mean and the following 8 path accumulators get reset for each of the N_sims by init_sim[&]():
+                double S_rho_up, S_theta_up, S_vega_up;
+                double path_mean_up, path_mean_dn;
+                double pm_rho_up, pm_vega_up, pm_theta_up;
+                if (!antithetic) {
+                    std::function<void()> init_sim{ [&] () {
+                        S = S_o; S_rho_up = S_o; S_theta_up = S_o; S_vega_up = S_o;
+                        path_mean = init_accum; path_mean_up = init_accum; path_mean_dn = init_accum;
+                        pm_rho_up = init_accum; pm_vega_up = init_accum;
+                    } };
+                    for (int i = 0; i < N_sims; ++i) {
+                        init_sim();  // reset this sim run accumulators.
+                        for (int j = 0; j < N_steps; ++j) {
+                            double eps = norm(gen);
+                            S *= exp(g * dt + eps * sd);
+                            path_accum_fn(j + 1, S, path_mean);
+                            path_accum_fn(j + 1, S * (1 + incr), path_mean_up);
+                            path_accum_fn(j + 1, S * (1 - incr), path_mean_dn);
+                            S_rho_up *= exp((g + incr * r) * dt + eps * sd);
+                            path_accum_fn(j + 1, S_rho_up, pm_rho_up);
+                            S_vega_up *= exp((r - q - sigma_up * sigma_up / 2) * dt + eps * sigma_up * sqrt(dt));
+                            path_accum_fn(j + 1, S_vega_up, pm_vega_up);
+                            if (j == N_steps - 2) { // special treatment -conditional has execution cost time(could put outside loop).
+                                pm_theta_up = path_mean;
+                                S_theta_up = S;
+                            }
+                        }
+                        double P{};
+                        if (style == Terms::Style::AsianPrc) {
+                            P = payoff(path_mean);
+                            cumm_delta_up += payoff(path_mean_up);
+                            cumm_delta_dn += payoff(path_mean_dn);
+                            cumm_rho_up += payoff(pm_rho_up);
+                            cumm_vega_up += payoff(pm_vega_up);
+                            cumm_theta_up += payoff(pm_theta_up);
+                        } else {  // AsianStrike and AsianExotic payoff depends on path_means and S(T):
+                            P = path_payoff(path_mean, S);
+                            cumm_delta_up += path_payoff(path_mean_up, S * (1 + incr));
+                            cumm_delta_dn += path_payoff(path_mean_dn, S * (1 - incr));
+                            cumm_rho_up += path_payoff(pm_rho_up, S);
+                            cumm_vega_up += path_payoff(pm_vega_up, S);
+                            cumm_theta_up += path_payoff(pm_theta_up, S_theta_up);
+                        }
+                        cumm_P += P;
+                        ssq += P * P;
+                    }
+                } else {  // antithetic:
+                    // Introduce the antithetic path 'accumulators':
+                    double path_mean_anti;
+                    double S_anti;
+                    double S_rho_up_anti, S_theta_up_anti, S_vega_up_anti;
+                    double path_mean_up_anti, path_mean_dn_anti;
+                    double pm_rho_up_anti, pm_vega_up_anti, pm_theta_up_anti;
+
+                    // init_sim_antith() called to initialize path accumulators prior to each of the N_sims:
+                    std::function<void()> init_sim_antith{ [&] () {
+                        S = S_o; S_rho_up = S_o; S_theta_up = S_o; S_vega_up = S_o;
+                        path_mean = init_accum; path_mean_up = init_accum; path_mean_dn = init_accum;
+                        pm_rho_up = init_accum; pm_vega_up = init_accum;
+                        S_anti = S_o; S_rho_up_anti = S_o; S_theta_up_anti = S_o; S_vega_up_anti = S_o;
+                        path_mean_anti = init_accum; path_mean_up_anti = init_accum; path_mean_dn_anti = init_accum;
+                        pm_rho_up_anti = init_accum; pm_vega_up_anti = init_accum;
+                    } };
+
+                    for (int i = 0; i < N_sims; ++i) {
+                        init_sim_antith();
+                        for (int j = 0; j < N_steps; ++j) {
+                            double eps = norm(gen);
+                            S *= exp(g * dt + eps * sd);
+                            path_accum_fn(j + 1, S, path_mean);
+                            path_accum_fn(j + 1, S * (1 + incr), path_mean_up);
+                            path_accum_fn(j + 1, S * (1 - incr), path_mean_dn);
+                            S_rho_up *= exp((g + incr * r) * dt + eps * sd);
+                            path_accum_fn(j + 1, S_rho_up, pm_rho_up);
+                            S_vega_up *= exp((r - q - sigma_up * sigma_up / 2) * dt + eps * sigma_up * sqrt(dt));
+                            path_accum_fn(j + 1, S_vega_up, pm_vega_up);
+                            if (j == N_steps - 2) { // special treatment -conditional has execution cost time(could put outside loop).
+                                pm_theta_up = path_mean;
+                                S_theta_up = S;
+                            }
+                            // Same for antithetic path, just replace +eps with -eps:
+                            S_anti *= exp(g * dt - eps * sd);
+                            path_accum_fn(j + 1, S_anti, path_mean_anti);
+                            path_accum_fn(j + 1, S_anti * (1 + incr), path_mean_up_anti);
+                            path_accum_fn(j + 1, S_anti * (1 - incr), path_mean_dn_anti);
+                            S_rho_up_anti *= exp((g + incr * r) * dt - eps * sd);
+                            path_accum_fn(j + 1, S_rho_up_anti, pm_rho_up_anti);
+                            S_vega_up_anti *= exp((r - q - sigma_up * sigma_up / 2) * dt - eps * sigma_up * sqrt(dt));
+                            path_accum_fn(j + 1, S_vega_up_anti, pm_vega_up_anti);
+                            if (j == N_steps - 2) {
+                                pm_theta_up_anti = path_mean_anti;
+                                S_theta_up_anti = S_anti;
+                            }
+                        }
+                        // Accumulate for this(i) sim/run:
+                        double P{};
+                        if (style == Terms::Style::AsianPrc) {
+                            P = (payoff(path_mean) + payoff(path_mean_anti)) / 2;  // averaging antithetic path results.
+                            cumm_delta_up += (payoff(path_mean_up) + payoff(path_mean_up_anti)) / 2;
+                            cumm_delta_dn += (payoff(path_mean_dn) + payoff(path_mean_dn_anti)) / 2;
+                            cumm_rho_up += (payoff(pm_rho_up) + payoff(pm_rho_up_anti)) / 2;
+                            cumm_vega_up += (payoff(pm_vega_up) + payoff(pm_vega_up_anti)) / 2;
+                            cumm_theta_up += (payoff(pm_theta_up) + payoff(pm_theta_up_anti)) / 2;
+                        } else {
+                            P = (path_payoff(path_mean, S) + path_payoff(path_mean_anti, S_anti)) / 2;
+                            cumm_delta_up += (path_payoff(path_mean_up, S * (1 + incr)) + path_payoff(path_mean_up_anti, S_anti * (1 + incr))) / 2;
+                            cumm_delta_dn += (path_payoff(path_mean_dn, S * (1 - incr)) + path_payoff(path_mean_dn_anti, S_anti * (1 - incr))) / 2;
+                            cumm_rho_up += (path_payoff(pm_rho_up, S_rho_up) + path_payoff(pm_rho_up_anti, S_rho_up_anti)) / 2;
+                            cumm_vega_up += (path_payoff(pm_vega_up, S_vega_up) + path_payoff(pm_vega_up_anti, S_vega_up_anti)) / 2;
+                            cumm_theta_up += (path_payoff(pm_theta_up, S_theta_up) + path_payoff(pm_theta_up_anti, S_theta_up_anti)) / 2;
+                        }
+                        cumm_P += P;
+                        ssq += P * P;
+                    }
+
+                }
+                double delta_up = df * (cumm_delta_up - cumm_P) / (N_sims * incr * S_o);
+                double delta_dn = df * (cumm_P - cumm_delta_dn) / (N_sims * incr * S_o);
+                g_ptr->delta = (delta_dn + delta_up) / 2.0;
+                g_ptr->gamma = (delta_up - delta_dn) / (incr * S_o);
+                g_ptr->rho = df * (exp(-incr * r * T) * cumm_rho_up - cumm_P) / (N_sims * incr * r);
+                g_ptr->theta = df * (exp(r * dt) * cumm_theta_up - cumm_P) / (N_sims * dt); // uses dt, not incr*T.
+                g_ptr->vega = df * (cumm_vega_up - cumm_P) / (N_sims * incr * sigma);
             }
-        } else { // valid g_ptr, get greeks:
-            double incr = 0.01;
-            double sigma_up{ (1 + incr) * sigma };
-            // Introduce and Initialize new accumulators(needed for the greeks) before the N_sims:
-            double cumm_delta_up{ 0 }, cumm_delta_dn{ 0 }, cumm_rho_up{ 0 },
-                cumm_theta_up{ 0 }, cumm_vega_up{ 0 };
-            // S, path_mean and the following 8 path accumulators get reset for each of the N_sims by init_sim[&]():
-            double S_rho_up, S_theta_up, S_vega_up;
-            double path_mean_up, path_mean_dn;
-            double pm_rho_up, pm_vega_up, pm_theta_up;
-            if (!antithetic) {
-                std::function<void()> init_sim{ [&] () {
-                    S = S_o; S_rho_up = S_o; S_theta_up = S_o; S_vega_up = S_o;
-                    path_mean = init_accum; path_mean_up = init_accum; path_mean_dn = init_accum;
-                    pm_rho_up = init_accum; pm_vega_up = init_accum;
-                } };
-                for (int i = 0; i < N_sims; ++i) {
-                    init_sim();  // reset this sim run accumulators.
-                    for (int j = 0; j < N_steps; ++j) {
-                        double eps = norm(gen);
-                        S *= exp(g * dt + eps * sd);
-                        path_accum_fn(j + 1, S, path_mean);
-                        path_accum_fn(j + 1, S * (1 + incr), path_mean_up);
-                        path_accum_fn(j + 1, S * (1 - incr), path_mean_dn);
-                        S_rho_up *= exp((g + incr * r) * dt + eps * sd);
-                        path_accum_fn(j + 1, S_rho_up, pm_rho_up);
-                        S_vega_up *= exp((r - q - sigma_up * sigma_up / 2) * dt + eps * sigma_up * sqrt(dt));
-                        path_accum_fn(j + 1, S_vega_up, pm_vega_up);
-                        if (j == N_steps - 2) { // special treatment -conditional has execution cost time(could put outside loop).
-                            pm_theta_up = path_mean;
-                            S_theta_up = S;
-                        }
-                    }
-                    double P{};
-                    if (style == Terms::Style::AsianPrc) {
-                        P = payoff(path_mean);
-                        cumm_delta_up += payoff(path_mean_up);
-                        cumm_delta_dn += payoff(path_mean_dn);
-                        cumm_rho_up += payoff(pm_rho_up);
-                        cumm_vega_up += payoff(pm_vega_up);
-                        cumm_theta_up += payoff(pm_theta_up);
-                    } else {  // AsianStrike and AsianExotic payoff depends on path_means and S(T):
-                        P = path_payoff(path_mean, S);
-                        cumm_delta_up += path_payoff(path_mean_up, S * (1 + incr));
-                        cumm_delta_dn += path_payoff(path_mean_dn, S * (1 - incr));
-                        cumm_rho_up += path_payoff(pm_rho_up, S);
-                        cumm_vega_up += path_payoff(pm_vega_up, S);
-                        cumm_theta_up += path_payoff(pm_theta_up, S_theta_up);
-                    }
-                    cumm_P += P;
-                    ssq += P * P;
-                }
-            } else {  // antithetic:
-                // Introduce the antithetic path 'accumulators':
-                double path_mean_anti;
-                double S_anti;
-                double S_rho_up_anti, S_theta_up_anti, S_vega_up_anti;
-                double path_mean_up_anti, path_mean_dn_anti;
-                double pm_rho_up_anti, pm_vega_up_anti, pm_theta_up_anti;
 
-                // init_sim_antith() called to initialize path accumulators prior to each of the N_sims:
-                std::function<void()> init_sim_antith{ [&] () {
-                    S = S_o; S_rho_up = S_o; S_theta_up = S_o; S_vega_up = S_o;
-                    path_mean = init_accum; path_mean_up = init_accum; path_mean_dn = init_accum;
-                    pm_rho_up = init_accum; pm_vega_up = init_accum;
-                    S_anti = S_o; S_rho_up_anti = S_o; S_theta_up_anti = S_o; S_vega_up_anti = S_o;
-                    path_mean_anti = init_accum; path_mean_up_anti = init_accum; path_mean_dn_anti = init_accum;
-                    pm_rho_up_anti = init_accum; pm_vega_up_anti = init_accum;
-                } };
-
-                for (int i = 0; i < N_sims; ++i) {
-                    init_sim_antith();
-                    for (int j = 0; j < N_steps; ++j) {
-                        double eps = norm(gen);
-                        S *= exp(g * dt + eps * sd);
-                        path_accum_fn(j + 1, S, path_mean);
-                        path_accum_fn(j + 1, S * (1 + incr), path_mean_up);
-                        path_accum_fn(j + 1, S * (1 - incr), path_mean_dn);
-                        S_rho_up *= exp((g + incr * r) * dt + eps * sd);
-                        path_accum_fn(j + 1, S_rho_up, pm_rho_up);
-                        S_vega_up *= exp((r - q - sigma_up * sigma_up / 2) * dt + eps * sigma_up * sqrt(dt));
-                        path_accum_fn(j + 1, S_vega_up, pm_vega_up);
-                        if (j == N_steps - 2) { // special treatment -conditional has execution cost time(could put outside loop).
-                            pm_theta_up = path_mean;
-                            S_theta_up = S;
-                        }
-                        // Same for antithetic path, just replace +eps with -eps:
-                        S_anti *= exp(g * dt - eps * sd);
-                        path_accum_fn(j + 1, S_anti, path_mean_anti);
-                        path_accum_fn(j + 1, S_anti * (1 + incr), path_mean_up_anti);
-                        path_accum_fn(j + 1, S_anti * (1 - incr), path_mean_dn_anti);
-                        S_rho_up_anti *= exp((g + incr * r) * dt - eps * sd);
-                        path_accum_fn(j + 1, S_rho_up_anti, pm_rho_up_anti);
-                        S_vega_up_anti *= exp((r - q - sigma_up * sigma_up / 2) * dt - eps * sigma_up * sqrt(dt));
-                        path_accum_fn(j + 1, S_vega_up_anti, pm_vega_up_anti);
-                        if (j == N_steps - 2) {
-                            pm_theta_up_anti = path_mean_anti;
-                            S_theta_up_anti = S_anti;
-                        }
-                    }
-                    // Accumulate for this(i) sim/run:
-                    double P{};
-                    if (style == Terms::Style::AsianPrc) {
-                        P = (payoff(path_mean) + payoff(path_mean_anti)) / 2;  // averaging antithetic path results.
-                        cumm_delta_up += (payoff(path_mean_up) + payoff(path_mean_up_anti)) / 2;
-                        cumm_delta_dn += (payoff(path_mean_dn) + payoff(path_mean_dn_anti)) / 2;
-                        cumm_rho_up += (payoff(pm_rho_up) + payoff(pm_rho_up_anti)) / 2;
-                        cumm_vega_up += (payoff(pm_vega_up) + payoff(pm_vega_up_anti)) / 2;
-                        cumm_theta_up += (payoff(pm_theta_up) + payoff(pm_theta_up_anti)) / 2;
-                    } else {
-                        P = (path_payoff(path_mean, S) + path_payoff(path_mean_anti, S_anti)) / 2;
-                        cumm_delta_up += (path_payoff(path_mean_up, S * (1 + incr)) + path_payoff(path_mean_up_anti, S_anti * (1 + incr))) / 2;
-                        cumm_delta_dn += (path_payoff(path_mean_dn, S * (1 - incr)) + path_payoff(path_mean_dn_anti, S_anti * (1 - incr))) / 2;
-                        cumm_rho_up += (path_payoff(pm_rho_up, S_rho_up) + path_payoff(pm_rho_up_anti, S_rho_up_anti)) / 2;
-                        cumm_vega_up += (path_payoff(pm_vega_up, S_vega_up) + path_payoff(pm_vega_up_anti, S_vega_up_anti)) / 2;
-                        cumm_theta_up += (path_payoff(pm_theta_up, S_theta_up) + path_payoff(pm_theta_up_anti, S_theta_up_anti)) / 2;
-                    }
-                    cumm_P += P;
-                    ssq += P * P;
-                }
-
-            }
-            double delta_up = df * (cumm_delta_up - cumm_P) / (N_sims * incr * S_o);
-            double delta_dn = df * (cumm_P - cumm_delta_dn) / (N_sims * incr * S_o);
-            g_ptr->delta = (delta_dn + delta_up) / 2.0;
-            g_ptr->gamma = (delta_up - delta_dn) / (incr * S_o);
-            g_ptr->rho = df * (exp(-incr * r * T) * cumm_rho_up - cumm_P) / (N_sims * incr * r);
-            g_ptr->theta = df * (exp(r * dt) * cumm_theta_up - cumm_P) / (N_sims * dt); // uses dt, not incr*T.
-            g_ptr->vega = df * (cumm_vega_up - cumm_P) / (N_sims * incr * sigma);
+            double mean_P = cumm_P / N_sims;
+            sd_mean_PV = exp(-r * T) * sqrt(((ssq - N_sims * mean_P * mean_P) / (N_sims - 1)) / N_sims);
+            double mean_PV = exp(-r * T) * mean_P;
+            return mean_PV;
         }
 
-        double mean_P = cumm_P / N_sims;
-        sd_mean_PV = exp(-r * T) * sqrt(((ssq - N_sims * mean_P * mean_P) / (N_sims - 1)) / N_sims);
-        double mean_PV = exp(-r * T) * mean_P;
-        return mean_PV;
+        std::mt19937& MC_get_rndm_gen() {
+            // long unsigned int seed = 1;    // Replace next line with these 2 for reproducing random 
+            // static std::mt19937 gen{seed}; // bit streams for testing.
+            static std::mt19937 gen{ (std::random_device{})() };
+            return gen;
+        }
     }
-
-    std::mt19937& MC_get_rndm_gen() {
-        // long unsigned int seed = 1;    // Replace next line with these 2 for reproducing random 
-        // static std::mt19937 gen{seed}; // bit streams for testing.
-        static std::mt19937 gen{ (std::random_device{})() };
-        return gen;
-    }
-
 
     std::ostream& operator<< (std::ostream& os, const Terms& t) {
         switch (t.style()) {

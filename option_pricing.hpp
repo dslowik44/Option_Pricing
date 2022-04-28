@@ -3,6 +3,7 @@
 
 #include <functional>
 #include <iostream>
+#include <random>
 
 namespace OptionPricing {
 
@@ -100,6 +101,7 @@ namespace OptionPricing {
     double btree_prc_terms_asset(const Terms&, const Asset&, int N_steps, double r,
         Option::Greeks*); // Note user danger here.
 
+    // All binary tree pricing calls lead here:
     double btree_prc_raw(int N_steps, double r,
         Terms::Style style, double T, std::function<double(double)>,
         double S_o, double q, double sigma, Option::Greeks*);
@@ -111,6 +113,7 @@ namespace OptionPricing {
     double MC_prc_terms_asset(const Terms&, const Asset&, int N_sims, int N_steps, double r,
         Option::Greeks*, bool antithetic, double& sd_prc);
 
+    // All MC pricing calls lead here:
     double MC_prc_raw(int N_sims, int N_steps, double r,
         Terms::Style style, double T, const std::function<double(double)>& payoff,
         const std::function<double(double, double)>& path_payoff,
@@ -118,6 +121,16 @@ namespace OptionPricing {
         double S_o, double q, double sigma, Option::Greeks*,
         bool antithetic, double& sd_prc);
 
+    namespace MC_InternalUtilities {              
+        double MC_prc_Euro(int, double, double, const std::function<double(double)>&,
+            double, double, double, Option::Greeks*, bool, double&);
+
+        double MC_prc_Asian(int, const int, double, Terms::Style, double, const std::function<double(double)>&,
+                const std::function<double(double, double)>&, const std::function<void(int, double, double&)>&, double,
+                double, double, double, Option::Greeks*, bool, double&);
+
+        std::mt19937& MC_get_rndm_gen();
+    }
 
     std::ostream& operator<< (std::ostream&, const Asset&);
     std::ostream& operator<< (std::ostream&, const Terms&);
