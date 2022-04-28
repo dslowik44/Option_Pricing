@@ -1,11 +1,9 @@
 #include "option_pricing.hpp"
-// #include "fexcpt.hpp"
 #include <iostream>
 #include <cmath>
-#include <memory>
-#include <numeric>
-#include <iterator>
 #include <valarray>
+#include <iomanip>
+#include <fstream>
 
 using namespace OptionPricing;
 
@@ -25,7 +23,7 @@ int main() {
     Option amer_put(terms_amer_put, underlying);
     Option euro_put(terms_euro_put, underlying);
 
-    // Get their prices calculated on binomial trees having N_steps on [20, 100] into
+    // Get their prices on the training set of binomial trees having N_steps on [20, 100] into
     // the arrays amer_prcs, euro_prcs:
     bool get_greeks = false;
     constexpr int start_N = 20, end_N = 100;
@@ -51,6 +49,8 @@ int main() {
 
     // Get the theoretical optimum mix of the Euro option control variate (for this parameter set):
     double c = cov_a_e / var_euro;
+    cout << "Training Set (binomial trees having N_steps on [" << start_N << " : "
+        << end_N << "]) Results:" << endl;
     cout << "Optimal c: " << c << endl;
     cout << "Corr(Amer, Euro): " << cov_a_e / (sqrt(var_amer) * sqrt(var_euro)) << endl;
 
@@ -72,15 +72,20 @@ int main() {
     cout << "None                 " << var_amer << '|' << sqrt(var_amer) << endl;
     cout << "Hull-White, c=1      " << var_amer_HW << '|' << sqrt(var_amer_HW) << endl;
     cout << "Optimal c=Cov/Var    " << var_amer_opt << '|' << sqrt(var_amer_opt) << endl;
+    cout << "Mean of raw American prices: " << amer_mean << endl;
+    cout << "Mean of Hull-White prices:   " << amer_mean_HW << endl;
+    cout << "Mean of opt c* prices:       " << amer_mean_opt << endl;
+    cout << "Mean of raw European prices: " << euro_mean << endl;
+    cout << "Black-Scholes European price: " << BS_prc << endl;
 
 
     // Out of sample test on binomial trees same number, N_points, of points as training sample
     // but all trees having N_steps >> end_N.
     // Test grid: [1000 : 1000 + N_points]
-    int test_start_N = 1000;
-    int test_end_N = 1000 + N_points - 1;
+    int test_start_N = 4000;
+    int test_end_N = 4000 + N_points - 1;
     cout << "\nTest set (binomial trees having N_steps on [" << test_start_N << " : "
-         << test_end_N << "] ) Variances:" << endl;
+        << test_end_N << "]) Results:" << endl;
 
     for (int N_steps = test_start_N; N_steps < test_end_N + 1; ++N_steps) {
         amer_prcs[N_steps - test_start_N] = amer_put.btree_prc(N_steps, r, get_greeks);
@@ -96,45 +101,48 @@ int main() {
     cov_a_e = ((amer_prcs - amer_mean) * (euro_prcs - euro_mean)).sum() / (N_points - 1);
     // Get the theoretical optimum mix of the Euro option control variate (for this parameter set):
     double c_testset = cov_a_e / var_euro;
-    cout << "Optimal c (in test set): " << c_testset<< endl;
+    cout << "Optimal c (in test set): " << c_testset << endl;
     cout << "Test set Corr(Amer, Euro): " << cov_a_e / (sqrt(var_amer) * sqrt(var_euro)) << endl;
 
     // Get the variance of Amer option prices via the optimal, and the Hull, White (c==1) control
     // variate admixture:
     amer_prcs_HW = amer_prcs - (euro_prcs - BS_prc);
-    amer_prcs_opt = amer_prcs - c * (euro_prcs - BS_prc); // use c from training set.
+    amer_prcs_opt = amer_prcs - c * (euro_prcs - BS_prc); // Use c from training set!
     amer_mean_HW = amer_prcs_HW.sum() / N_points;
     amer_mean_opt = amer_prcs_opt.sum() / N_points;
     var_amer_HW = ((amer_prcs_HW - amer_mean_HW) * (amer_prcs_HW - amer_mean_HW)).sum() / (N_points - 1);
     var_amer_opt = ((amer_prcs_opt - amer_mean_opt) * (amer_prcs_opt - amer_mean_opt)).sum() / (N_points - 1);
 
+    std::fstream outfile("prcs_4000-4080.csv", std::ios_base::out);
+    for (int N_steps = test_start_N; N_steps < test_end_N + 1; ++N_steps) {
+        outfile << N_steps << "," << amer_prcs[N_steps - test_start_N] << ',' 
+                << euro_prcs[N_steps - test_start_N] << ',' 
+                << std::setprecision(10) << amer_prcs_opt[N_steps - test_start_N] << endl;
+    }
+
+    cout << "Var and stddev of Z = A -c(E - BS_prc):" << endl;
     cout << "         c                  Var | stddev" << endl;
     cout << "None                 " << var_amer << '|' << sqrt(var_amer) << endl;
     cout << "Hull-White, c=1      " << var_amer_HW << '|' << sqrt(var_amer_HW) << endl;
     cout << "Optimal c=Cov/Var    " << var_amer_opt << '|' << sqrt(var_amer_opt) << endl;
+    cout << "Mean of raw American prices: " << amer_mean << endl;
+    cout << "Mean of Hull-White prices:   " << amer_mean_HW << endl;
+    cout << "Mean of opt c* prices:       " << amer_mean_opt << endl;
+    cout << "Mean of raw European prices: " << euro_mean << endl;
+   
+   outfile.close();
 
-    /*  IN PRACTICE:
-        To take advantage of the above results:
-        Run lines of code 1 - 54 to determine optimal c:
-        - set the option parameters to those of interest.
-        Using this c, Price the Amer and Euro on a binomial tree with a huge number of time steps
-        and estimate the price of the Amer as amer_prc + c * (BS_prc - euro_prc). 
-        This estimate is accurate with std dev as finally reported above.
-
-*/
-
-
-
-
-
-
-
-    // Test on 2 test grids having N_points:
-    // 1) [1000 : 1000 + N_points]
-    // 2) [1000 : 1000 + N_points : 19]
-
-
-
+   // write Amer, Euro and Optimal prices for N_steps on [1000, 20000]:
+   outfile.open("prcs_1000-20000.csv", std::ios_base::out);
+   for (int N_steps = 1000; N_steps < 20002; ++N_steps) {
+       if (N_steps % 1000 < 2) {
+        double a = amer_put.btree_prc(N_steps, r, get_greeks);
+        double e = euro_put.btree_prc(N_steps, r, get_greeks);
+        outfile << N_steps << "," << a << ',' << e << ',' << a - c * (e - BS_prc) << endl;
+        // cout << N_steps << ' ' << std::setprecision(10) << a - c * (e - BS_prc) << endl;
+        // cout << N_steps << ' ' << std::setprecision(10) << a << endl;
+       }
+    }
+   
 
 }
-
