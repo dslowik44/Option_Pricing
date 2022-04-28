@@ -4,10 +4,10 @@
 #include <cmath>
 #include <limits>
 
-using std::exp;
-using std::sqrt;
 
 namespace OptionPricing {
+    using std::exp;
+    using std::sqrt;
 
     Asset::Asset(double S_o, double q, double sigma)
         : _S_o{ S_o }, _q{ q }, _sigma{ sigma } { }
@@ -288,7 +288,7 @@ namespace OptionPricing {
             double ssq{ 0.0 };     // To accumulate the sum of their squares for stddev calculation.
 
             std::mt19937& gen{ MC_get_rndm_gen() };  // Mersenne twister random number generator to feed norm.
-            std::normal_distribution norm{};         // Normal distribution to generate eps.
+            std::normal_distribution<double> norm{};         // Normal distribution to generate eps.
 
             // Prepare some algebraic values used in the calculations:
             const double sd = sigma * sqrt(T);
@@ -381,7 +381,7 @@ namespace OptionPricing {
 
             std::mt19937& MC_get_rndm_gen();
             std::mt19937& gen{ MC_get_rndm_gen() };  // Mersenne twister random number generator to feed norm.
-            std::normal_distribution norm{};         // Normal distribution to generate eps.
+            std::normal_distribution<double> norm{};         // Normal distribution to generate eps.
 
             // Prepare some algebraic values used in the calculations:
             const double dt = T / N_steps;
