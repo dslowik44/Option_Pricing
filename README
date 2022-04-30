@@ -1,2 +1,4 @@
-Read Doc_opt_prc.ipynb
+Doc_opt_prc.ipynb: Introduction, User manual, API Reference.
+Doc_Ctrl_Var2.ipynb: Study of use of control variates, and then into the self-similar nature of Prices vs N_steps on binomial tree applied to an American Put.
 I found that the jupyter notebook was formatted much nicer (collapsable code cells) after I cloned this repo and opened locally.
+
